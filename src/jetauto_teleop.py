@@ -8,20 +8,23 @@ import sys, select, termios, tty
 msg = """
 Control Your JetAuto in Gazebo!
 ---------------------------
-Moving around:
+Moving around (HOLD DOWN KEY):
    w    
 a  s  d
 
 q/e : turn CCW/CW
-spacebar : force stop
+Release key to automatically stop!
 CTRL-C to quit
 """
 
-def getKey():
-    # This function captures single key presses without needing to hit 'Enter'
+def getKey(timeout=0.1):
+    # Added a timeout so it doesn't block forever waiting for a key
     tty.setraw(sys.stdin.fileno())
-    select.select([sys.stdin], [], [], 0)
-    key = sys.stdin.read(1)
+    rlist, _, _ = select.select([sys.stdin], [], [], timeout)
+    if rlist:
+        key = sys.stdin.read(1)
+    else:
+        key = ''  # Return empty string if no key is pressed
     termios.tcsetattr(sys.stdin, termios.TCSADRAIN, settings)
     return key
 
@@ -33,11 +36,11 @@ if __name__=="__main__":
     rospy.init_node('lab4_teleop_node')
     
     # 2. Create the Publisher targeting the JetAuto Gazebo topic
-    pub = rospy.Publisher('/jetauto_controller/cmd_vel', Twist, queue_size=10)
+    pub = rospy.Publisher('/jetauto_1/cmd_vel', Twist, queue_size=10)
     
-    # Safe speeds for Gazebo simulation (Max linear is 0.7, Max angular is 1.0)
-    speed = 0.3
-    turn = 0.5
+    # SLOWED DOWN: Reduced speed for careful mapping
+    speed = 0.1  # Down from 0.3
+    turn = 0.2   # Down from 0.5
     
     x = 0
     y = 0
@@ -46,7 +49,8 @@ if __name__=="__main__":
     try:
         print(msg)
         while not rospy.is_shutdown():
-            key = getKey()
+            # Check for a key press every 0.1 seconds
+            key = getKey(0.1)
             
             # Map keyboard inputs to movement vectors
             if key == 'w':
@@ -61,11 +65,11 @@ if __name__=="__main__":
                 x, y, th = 0, 0, 1    # Turn Counter-Clockwise
             elif key == 'e':
                 x, y, th = 0, 0, -1   # Turn Clockwise
-            elif key == ' ':
-                x, y, th = 0, 0, 0    # Stop
+            elif key == '\x03':       # Catch CTRL-C to exit cleanly
+                break
             else:
-                if (key == '\x03'):   # Catch CTRL-C to exit cleanly
-                    break
+                # AUTO-STOP: If you let go of the keys, zero out the speeds
+                x, y, th = 0, 0, 0    
 
             # 3. Construct and Publish the Twist message
             twist = Twist()
